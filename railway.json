@@ -1,5 +1,5 @@
-# Minimal valid JSON
+
 echo '{}' > railway.json
 
-# Deploy
+
 railway up --clean
