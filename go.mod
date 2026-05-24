@@ -1,2 +1,5 @@
-go mod init razorpay-api
-go get github.com/gorilla/mux
+module razorpay-api
+
+go 1.21
+
+require github.com/gorilla/mux v1.8.1
