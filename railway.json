@@ -1,5 +1,2 @@
-
 echo '{}' > railway.json
-
-
 railway up --clean
