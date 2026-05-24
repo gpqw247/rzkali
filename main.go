@@ -44,7 +44,6 @@ var (
         "https://pages.razorpay.com/Gift2DS",
         "https://pages.razorpay.com/pl_C0rYjVEXmkqYVC/view",
         "https://pages.razorpay.com/paytomitzvahLtd",
-]
     }
     urlIndex   uint64
     proxyIndex uint64
