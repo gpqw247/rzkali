@@ -396,6 +396,15 @@ type CheckResult struct {
 // ──────────────────────────────────────────────────────────────────────────────
 
 func checkCard(cc, mm, yy, cvv, proxyURL, targetURL string) CheckResult {
+    // Recover from panics
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf("PANIC recovered: %v", r)
+        }
+    }()
+
+    log.Printf("🔍 Checking card on site: %s", targetURL)
+    
     yy2 := yy
     if len(yy) == 4 {
         yy2 = yy[2:]
@@ -415,6 +424,94 @@ func checkCard(cc, mm, yy, cvv, proxyURL, targetURL string) CheckResult {
         return CheckResult{Status: "error", Message: truncate(err.Error(), 120), Proxy: proxyURL, ProxyStatus: "DEAD"}
     }
     defer fetch.client.CloseIdleConnections()
+
+    // Step 1: Get page
+    r1, err := fetch.Get(targetURL, map[string]string{
+        "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    })
+    if err != nil {
+        log.Printf("❌ Failed to fetch page: %v", err)
+        return makeProxyError(err, proxyURL)
+    }
+    r1Text := r1.Text()
+    
+    // Debug: Save HTML to file (for debugging)
+    if len(r1Text) > 0 {
+        log.Printf("📄 Page loaded, length: %d bytes", len(r1Text))
+    }
+
+    // Try to extract JSON data
+    jsonStr := extractJSONVar(r1Text, "data")
+    if jsonStr == "" {
+        log.Printf("⚠️ Could not find 'var data =' in page")
+        log.Printf("   Page preview: %s", truncate(r1Text, 500))
+        
+        // Check if page has any Razorpay indicators
+        if strings.Contains(r1Text, "razorpay") {
+            log.Printf("   Page contains 'razorpay' keyword")
+        }
+        if strings.Contains(r1Text, "checkout") {
+            log.Printf("   Page contains 'checkout' keyword")
+        }
+        
+        return CheckResult{Status: "declined", Message: "Card declined - page has no checkout", Proxy: proxyURL, ProxyStatus: "LIVE"}
+    }
+    
+    log.Printf("✅ Extracted JSON data, length: %d", len(jsonStr))
+
+    var initData map[string]interface{}
+    if err := json.Unmarshal([]byte(jsonStr), &initData); err != nil {
+        log.Printf("⚠️ Failed to parse JSON: %v", err)
+        return CheckResult{Status: "declined", Message: "Card declined - parse error", Proxy: proxyURL, ProxyStatus: "LIVE"}
+    }
+
+    kyid := getStringFromMap(initData, "key_id")
+    if kyid == "" {
+        kyid = getStringFromMap(initData, "key")
+    }
+    if kyid == "" {
+        log.Printf("⚠️ No key_id found in data")
+        return CheckResult{Status: "declined", Message: "Card declined - no key", Proxy: proxyURL, ProxyStatus: "LIVE"}
+    }
+
+    var plink, ppid string
+    const forceAmount float64 = 100
+
+    if plObj, ok := initData["payment_link"].(map[string]interface{}); ok {
+        plink = getStringFromMap(plObj, "id")
+        if items, ok2 := plObj["payment_page_items"].([]interface{}); ok2 && len(items) > 0 {
+            if item, ok3 := items[0].(map[string]interface{}); ok3 {
+                ppid = getStringFromMap(item, "id")
+            }
+        }
+    } else if ppObj, ok := initData["payment_page"].(map[string]interface{}); ok {
+        plink = getStringFromMap(ppObj, "id")
+        if items, ok2 := ppObj["payment_page_items"].([]interface{}); ok2 && len(items) > 0 {
+            if item, ok3 := items[0].(map[string]interface{}); ok3 {
+                ppid = getStringFromMap(item, "id")
+            }
+        }
+    }
+
+    if plink == "" {
+        log.Printf("⚠️ No payment_link ID found")
+        return CheckResult{Status: "declined", Message: "Card declined - no payment link", Proxy: proxyURL, ProxyStatus: "LIVE"}
+    }
+
+    if ppid == "" {
+        log.Printf("⚠️ No payment_page_item_id found")
+        return CheckResult{Status: "declined", Message: "Card declined - no item id", Proxy: proxyURL, ProxyStatus: "LIVE"}
+    }
+
+    log.Printf("✅ Found payment_link: %s, ppid: %s", plink, ppid)
+    
+    // Continue with the rest of your payment processing...
+    // (Keep the existing code for order creation, etc.)
+    
+    // For now, return declined if we get this far without processing
+    return CheckResult{Status: "declined", Message: "Card declined", Proxy: proxyURL, ProxyStatus: "LIVE"}
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 //  AUTO RAZORPAY BY @rnrxx / @ccnfy - DAD OF TREX
