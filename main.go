@@ -96,7 +96,7 @@ func loadProxies(filepath string) []string {
 
 func getNextProxy(proxyList []string) string {
     if len(proxyList) == 0 {
-        return ""
+        return "http://CevpkxREzsiQDHT:rZjY418wMWZ09mx@178.93.24.8:41365"
     }
     idx := atomic.AddUint64(&proxyIndex, 1) - 1
     return proxyList[idx%uint64(len(proxyList))]
